@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vite/
+*.local
+
+# Model files (too large for git — see docs/onnx-export.md)
+public/models/**/*.onnx
+public/models/**/*.bin
+
+# Pre-generated demo cache
+public/data/demo_cache.json

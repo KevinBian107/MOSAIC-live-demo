@@ -1,0 +1,43 @@
+{
+  "tokenizer_type": "hdtc",
+  "special_tokens": {
+    "SOS": 0,
+    "EOS": 1,
+    "PAD": 2,
+    "COMM_START": 3,
+    "COMM_END": 4,
+    "LEDGE": 5,
+    "REDGE": 6,
+    "SUPER_START": 7,
+    "SUPER_END": 8,
+    "TYPE_RING": 9,
+    "TYPE_FUNC": 10,
+    "TYPE_SINGLETON": 11
+  },
+  "IDX_OFFSET": 12,
+  "vocab_size": 127,
+  "labeled_graph": true,
+  "num_atom_types": 10,
+  "num_bond_types": 5,
+  "atom_types": [
+    "C",
+    "N",
+    "O",
+    "F",
+    "P",
+    "S",
+    "Cl",
+    "Br",
+    "I",
+    "Unknown"
+  ],
+  "bond_types": [
+    "SINGLE",
+    "DOUBLE",
+    "TRIPLE",
+    "AROMATIC",
+    "Unknown"
+  ],
+  "max_num_nodes": 100,
+  "n_positions": 2048
+}

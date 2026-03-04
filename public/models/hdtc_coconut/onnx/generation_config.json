@@ -1,0 +1,9 @@
+{
+  "bos_token_id": 0,
+  "eos_token_id": 1,
+  "pad_token_id": 2,
+  "max_length": 2048,
+  "do_sample": true,
+  "top_k": 10,
+  "temperature": 1.0
+}

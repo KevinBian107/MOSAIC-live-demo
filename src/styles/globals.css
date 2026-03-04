@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --ring-color: #FF6B6B;
+  --functional-color: #4ECDC4;
+  --singleton-color: #95A5A6;
+  --superedge-color: #2E86AB;
+
+  /* Zinc palette — matches MOSAIC-website */
+  --bg-primary: #ffffff;
+  --bg-card: #fafafa;           /* zinc-50 */
+  --bg-canvas: #f4f4f5;         /* zinc-100 */
+  --text-primary: #09090b;      /* zinc-950 */
+  --text-secondary: #52525b;    /* zinc-600 */
+  --accent: #1d4ed8;            /* blue-700 */
+  --border: #e4e4e7;            /* zinc-200 */
+  --border-hover: #a1a1aa;      /* zinc-400 */
+}
+
+body {
+  margin: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Noto Sans', system-ui, -apple-system, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
