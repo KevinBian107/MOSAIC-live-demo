@@ -19,9 +19,11 @@ import type { TokenizerConfig } from './engine/tokenizer';
 import { initRDKit, validateAndEnrich, computeFallbackLayout, hasDegenrateLayout, normalizeMoleculeLayout } from './engine/chemistry';
 import type {
   MoleculeData,
+  MoleculeGroup,
   ModelStatus,
   GenerationStatus,
   GenerationConfig,
+  GenerationMode,
   DemoCacheData,
   CachedMolecule,
   TokenizerType,
@@ -68,6 +70,8 @@ export default function App() {
   const [modelStatus, setModelStatus] = useState<ModelStatus>({ stage: 'idle' });
   const [genStatus, setGenStatus] = useState<GenerationStatus>({ stage: 'idle' });
   const [molecules, setMolecules] = useState<MoleculeData[]>([]);
+  const [moleculeGroups, setMoleculeGroups] = useState<MoleculeGroup[]>([]);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('single');
   const [rdkitReady, setRdkitReady] = useState(false);
   const [tokenizerType, setTokenizerType] = useState<TokenizerType>('hdtc');
   const [tokenizerConfig, setTokenizerConfig] = useState<TokenizerConfig>(MODEL_CONFIGS.hdtc.defaultConfig);
@@ -140,10 +144,19 @@ export default function App() {
     if (type === tokenizerType) return;
     // Reset state when switching
     setMolecules([]);
+    setMoleculeGroups([]);
     setGenStatus({ stage: 'idle' });
     setModelStatus({ stage: 'idle' });
     setTokenizerType(type);
   }, [tokenizerType]);
+
+  const handleModeChange = useCallback((mode: GenerationMode) => {
+    if (mode === generationMode) return;
+    setMolecules([]);
+    setMoleculeGroups([]);
+    setGenStatus({ stage: 'idle' });
+    setGenerationMode(mode);
+  }, [generationMode]);
 
   // ─── Generation Handler ──────────────────────────────────────────────────
 
@@ -225,6 +238,133 @@ export default function App() {
         });
 
         setMolecules(decoded);
+        setGenStatus({ stage: 'complete', elapsed: performance.now() - startTime });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setGenStatus({ stage: 'error', error: msg });
+      }
+    },
+    [tokenizerType, tokenizerConfig, rdkitReady, loadModel],
+  );
+
+  // ─── Sweep Generation Handler ─────────────────────────────────────────────
+
+  const handleSweepGenerate = useCallback(
+    async (sweepConfig: { topKValues: number[]; temperatureValues: number[]; numMolecules: number; seed: number; maxLength: number }) => {
+      try {
+        await loadModel(tokenizerType);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setGenStatus({ stage: 'error', error: `Model load failed: ${msg}. Use the Demo button instead.` });
+        return;
+      }
+
+      const model = modelRef.current;
+      if (!model?.isReady) return;
+
+      const startTime = performance.now();
+      let totalTokens = 0;
+
+      const tokenIds: GenerationTokenIds = {
+        sos: tokenizerConfig.sosTokenId,
+        eos: tokenizerConfig.eosTokenId,
+        pad: tokenizerConfig.padTokenId,
+      };
+
+      // Build cartesian product of topK × temperature
+      const combos: { topK: number; temperature: number }[] = [];
+      for (const k of sweepConfig.topKValues) {
+        for (const t of sweepConfig.temperatureValues) {
+          combos.push({ topK: k, temperature: t });
+        }
+      }
+
+      const totalMolecules = combos.length * sweepConfig.numMolecules;
+      setGenStatus({ stage: 'generating', current: 0, total: totalMolecules, tokensGenerated: 0 });
+      setMolecules([]);
+      setMoleculeGroups([]);
+
+      try {
+        const groups: MoleculeGroup[] = [];
+        let globalMolIdx = 0;
+
+        for (let ci = 0; ci < combos.length; ci++) {
+          const combo = combos[ci]!;
+          const comboLabel = `top-k = ${combo.topK}, temp = ${combo.temperature}`;
+
+          const config: GenerationConfig = {
+            numMolecules: sweepConfig.numMolecules,
+            topK: combo.topK,
+            temperature: combo.temperature,
+            seed: sweepConfig.seed,
+            maxLength: sweepConfig.maxLength,
+          };
+
+          setGenStatus({
+            stage: 'generating',
+            current: globalMolIdx,
+            total: totalMolecules,
+            tokensGenerated: totalTokens,
+            comboLabel,
+          });
+
+          const results = await model.generateBatch(
+            config,
+            tokenIds,
+            (index, _result) => {
+              setGenStatus({
+                stage: 'generating',
+                current: globalMolIdx + index,
+                total: totalMolecules,
+                tokensGenerated: totalTokens,
+                comboLabel,
+              });
+            },
+            (_molIdx, _token, _pos) => {
+              totalTokens++;
+            },
+          );
+
+          // Decode and validate this combo's batch
+          const decoded: MoleculeData[] = results.map((result, i) => {
+            const toks = result.tokens;
+            const toStr = tokenizerType === 'sent' ? sentTokenToString : tokenToString;
+            const readable = toks.slice(0, 60).map((t) => toStr(t, tokenizerConfig)).join(' ');
+            console.log(`[MOSAIC] ── Sweep ${comboLabel} molecule ${i} (${tokenizerType.toUpperCase()}) ──`);
+            console.log(`[MOSAIC]   Total tokens: ${toks.length}`);
+            console.log(`[MOSAIC]   First 60 tokens: ${readable}`);
+
+            let mol = tokenizerType === 'sent'
+              ? decodeSentTokens(toks, tokenizerConfig, globalMolIdx + i)
+              : decodeTokens(toks, tokenizerConfig, globalMolIdx + i);
+
+            console.log(`[MOSAIC]   Decoded: ${mol.atoms.length} atoms, ${mol.bonds.length} bonds, ${mol.communities.length} communities`);
+
+            if (rdkitReady) {
+              mol = validateAndEnrich(mol);
+            } else {
+              mol = computeFallbackLayout(mol);
+            }
+
+            if (mol.atoms.length > 1 && hasDegenrateLayout(mol)) {
+              mol = computeFallbackLayout(mol);
+            }
+
+            mol.tokens = toks;
+            return mol;
+          });
+
+          groups.push({
+            label: comboLabel,
+            topK: combo.topK,
+            temperature: combo.temperature,
+            molecules: decoded,
+          });
+
+          globalMolIdx += sweepConfig.numMolecules;
+        }
+
+        setMoleculeGroups(groups);
         setGenStatus({ stage: 'complete', elapsed: performance.now() - startTime });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -377,10 +517,13 @@ export default function App() {
         modelStatus={modelStatus}
         isGenerating={isGenerating}
         onGenerate={handleGenerate}
+        onSweepGenerate={handleSweepGenerate}
         onLoadFallback={handleLoadFallback}
         onTestDecode={handleTestDecode}
         tokenizerType={tokenizerType}
         onTypeChange={handleTypeChange}
+        generationMode={generationMode}
+        onModeChange={handleModeChange}
       />
 
       {/* Progress */}
@@ -389,7 +532,7 @@ export default function App() {
       </div>
 
       {/* View mode toggle */}
-      {molecules.length > 0 && (
+      {(molecules.length > 0 || moleculeGroups.length > 0) && (
         <div className="flex items-center gap-2 mb-3">
           <span className="text-xs text-[var(--text-secondary)]">View:</span>
           <button
@@ -416,7 +559,11 @@ export default function App() {
       )}
 
       {/* Molecule Grid */}
-      <MoleculeGrid molecules={molecules} viewMode={viewMode} />
+      <MoleculeGrid
+        molecules={molecules}
+        groups={moleculeGroups.length > 0 ? moleculeGroups : undefined}
+        viewMode={viewMode}
+      />
     </div>
   );
 }

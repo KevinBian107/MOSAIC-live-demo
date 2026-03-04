@@ -3,6 +3,17 @@
 /** Supported tokenizer types. */
 export type TokenizerType = 'hdtc' | 'sent';
 
+/** Generation mode: single combo vs parameter sweep. */
+export type GenerationMode = 'single' | 'sweep';
+
+/** A group of molecules generated with the same parameters (for sweep mode). */
+export interface MoleculeGroup {
+  label: string;           // e.g. "top-k=10, temp=0.5"
+  topK: number;
+  temperature: number;
+  molecules: MoleculeData[];
+}
+
 /** Atom element types supported by MOSAIC (matching molecular.py ATOM_TYPES). */
 export const ATOM_TYPES = ['C', 'N', 'O', 'F', 'P', 'S', 'Cl', 'Br', 'I'] as const;
 export type AtomElement = (typeof ATOM_TYPES)[number] | 'Unknown';
@@ -147,7 +158,7 @@ export type ModelStatus =
 /** Generation status. */
 export type GenerationStatus =
   | { stage: 'idle' }
-  | { stage: 'generating'; current: number; total: number; tokensGenerated: number }
+  | { stage: 'generating'; current: number; total: number; tokensGenerated: number; comboLabel?: string }
   | { stage: 'decoding' }
   | { stage: 'complete'; elapsed: number }
   | { stage: 'error'; error: string };

@@ -16,7 +16,9 @@ export default function ProgressBar({ status }: ProgressBarProps) {
   const getMessage = (): string => {
     switch (status.stage) {
       case 'generating':
-        return `Generating molecule ${status.current + 1}/${status.total} (${status.tokensGenerated} tokens)`;
+        return status.comboLabel
+          ? `Generating ${status.comboLabel} — ${status.current + 1}/${status.total} molecules (${status.tokensGenerated} tokens)`
+          : `Generating molecule ${status.current + 1}/${status.total} (${status.tokensGenerated} tokens)`;
       case 'decoding':
         return 'Validating molecules with RDKit...';
       case 'complete':
