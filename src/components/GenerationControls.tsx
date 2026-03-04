@@ -42,7 +42,7 @@ export default function GenerationControls({
 
   return (
     <div className="flex flex-col gap-4 p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border)]">
-      <div className="flex flex-wrap items-end gap-4">
+      <div className="flex flex-wrap items-end gap-6">
         {/* Molecule count */}
         <div className="flex flex-col gap-1">
           <label className="text-xs text-[var(--text-secondary)] font-medium">
@@ -113,6 +113,13 @@ export default function GenerationControls({
           <span className="text-xs text-center text-[var(--text-secondary)]">
             {topK}
           </span>
+        </div>
+
+        {/* Descriptions */}
+        <div className="flex items-center text-[10px] text-[var(--text-secondary)] opacity-60 ml-auto gap-1.5">
+          <span>Temperature: low = safe, high = creative</span>
+          <span>·</span>
+          <span>Top-K: fewer = focused, more = diverse</span>
         </div>
       </div>
 

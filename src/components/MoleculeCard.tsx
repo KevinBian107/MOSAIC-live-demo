@@ -96,13 +96,13 @@ export default function MoleculeCard({ molecule, delay = 0, viewMode = '3d' }: M
           {/* Community type badges */}
           <div className="flex gap-1 ml-auto">
             {commCounts['ring'] && (
-              <Badge color={TYPE_COLORS.ring} label={`${commCounts['ring']}R`} />
+              <Badge color={TYPE_COLORS.ring} label={`${commCounts['ring']} Ring`} />
             )}
             {commCounts['functional'] && (
-              <Badge color={TYPE_COLORS.functional} label={`${commCounts['functional']}F`} />
+              <Badge color={TYPE_COLORS.functional} label={`${commCounts['functional']} Func`} />
             )}
             {commCounts['singleton'] && (
-              <Badge color={TYPE_COLORS.singleton} label={`${commCounts['singleton']}S`} />
+              <Badge color={TYPE_COLORS.singleton} label={`${commCounts['singleton']} Sing`} />
             )}
           </div>
         </div>

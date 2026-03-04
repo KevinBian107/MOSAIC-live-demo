@@ -300,13 +300,13 @@ export default function App() {
   return (
     <div className="min-h-screen p-4 md:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <header className="flex items-center justify-between mb-6">
+      <header className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">
             MOSAIC Live Demo
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-            Generate molecules with hierarchical graph tokenization, running entirely in your browser.
+            Generate novel molecules with hierarchical graph tokenization, running entirely in your browser.
           </p>
         </div>
 
@@ -320,7 +320,7 @@ export default function App() {
 
           {/* GitHub link */}
           <a
-            href="https://github.com/kbiandesign/MOSAIC"
+            href="https://github.com/KevinBian107/MOSAIC"
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
@@ -332,6 +332,19 @@ export default function App() {
           </a>
         </div>
       </header>
+
+      {/* How it works */}
+      <div className="mb-4 p-3 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border)] text-xs text-[var(--text-secondary)] leading-relaxed">
+        <p>
+          This demo runs a <strong className="text-[var(--text-primary)]">GPT-2 model</strong> (11.5M params)
+          directly in your browser via <strong className="text-[var(--text-primary)]">ONNX Runtime Web</strong> (WebGPU/WASM).
+          The model generates molecules as token sequences using <strong className="text-[var(--text-primary)]">HDTC</strong> (Hierarchical
+          Direct Tree with Communities) — a tokenization that preserves the molecule's hierarchical
+          structure: rings, functional groups, and their connections.
+          Generated structures are validated with <strong className="text-[var(--text-primary)]">RDKit</strong> to produce SMILES strings.
+          No data leaves your device.
+        </p>
+      </div>
 
       {/* Controls */}
       <GenerationControls
