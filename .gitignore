@@ -7,5 +7,9 @@ dist/
 # Quantized model (fp32 is used — see docs/onnx-export.md)
 public/models/**/*quantized*
 
-# Pre-generated demo cache (regenerate with generate_demo_cache.py)
+# ONNX model files (large, downloaded separately)
+public/models/**/onnx/model.onnx
+
+# Pre-generated demo caches (regenerate with generate_demo_cache.py)
 public/data/demo_cache.json
+public/data/sent_demo_cache.json

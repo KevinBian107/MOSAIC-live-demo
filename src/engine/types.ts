@@ -1,5 +1,8 @@
 /** Shared TypeScript types for the MOSAIC live demo engine. */
 
+/** Supported tokenizer types. */
+export type TokenizerType = 'hdtc' | 'sent';
+
 /** Atom element types supported by MOSAIC (matching molecular.py ATOM_TYPES). */
 export const ATOM_TYPES = ['C', 'N', 'O', 'F', 'P', 'S', 'Cl', 'Br', 'I'] as const;
 export type AtomElement = (typeof ATOM_TYPES)[number] | 'Unknown';

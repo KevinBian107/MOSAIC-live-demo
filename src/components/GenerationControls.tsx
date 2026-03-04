@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import type { GenerationConfig, ModelStatus } from '../engine/types';
+import type { GenerationConfig, ModelStatus, TokenizerType } from '../engine/types';
 
 interface GenerationControlsProps {
   modelStatus: ModelStatus;
@@ -14,6 +14,8 @@ interface GenerationControlsProps {
   onGenerate: (config: GenerationConfig) => void;
   onLoadFallback: () => void;
   onTestDecode?: () => void;
+  tokenizerType: TokenizerType;
+  onTypeChange: (type: TokenizerType) => void;
 }
 
 export default function GenerationControls({
@@ -22,6 +24,8 @@ export default function GenerationControls({
   onGenerate,
   onLoadFallback,
   onTestDecode,
+  tokenizerType,
+  onTypeChange,
 }: GenerationControlsProps) {
   const [numMolecules, setNumMolecules] = useState(4);
   const [seed, setSeed] = useState(42);
@@ -42,6 +46,33 @@ export default function GenerationControls({
 
   return (
     <div className="flex flex-col gap-4 p-4 bg-[var(--bg-card)] rounded-xl border border-[var(--border)]">
+      {/* Tokenizer type selector */}
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-[var(--text-secondary)] font-medium">Tokenizer:</span>
+        <div className="flex gap-1 bg-[var(--bg-canvas)] rounded-lg p-0.5">
+          {(['hdtc', 'sent'] as const).map((type) => (
+            <button
+              key={type}
+              onClick={() => onTypeChange(type)}
+              disabled={isGenerating}
+              className={`
+                px-3 py-1 text-xs font-semibold rounded-md transition-all
+                ${tokenizerType === type
+                  ? 'bg-white text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }
+                ${isGenerating ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+              `}
+            >
+              {type.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <span className="text-[10px] text-[var(--text-secondary)] opacity-60">
+          {tokenizerType === 'hdtc' ? 'Hierarchical communities' : 'Flat walk-based'}
+        </span>
+      </div>
+
       <div className="flex flex-wrap items-end gap-6">
         {/* Molecule count */}
         <div className="flex flex-col gap-1">

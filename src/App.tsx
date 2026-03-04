@@ -12,7 +12,9 @@ import ProgressBar from './components/ProgressBar';
 import MoleculeGrid from './components/MoleculeGrid';
 
 import { MosaicModel } from './engine/model';
-import { createTokenizerConfig, decodeTokens, HDTC, tokenToString } from './engine/tokenizer';
+import type { GenerationTokenIds } from './engine/model';
+import { createTokenizerConfig, decodeTokens, tokenToString } from './engine/tokenizer';
+import { createSentTokenizerConfig, decodeSentTokens, sentTokenToString } from './engine/sent-tokenizer';
 import type { TokenizerConfig } from './engine/tokenizer';
 import { initRDKit, validateAndEnrich, computeFallbackLayout, hasDegenrateLayout, normalizeMoleculeLayout } from './engine/chemistry';
 import type {
@@ -22,23 +24,43 @@ import type {
   GenerationConfig,
   DemoCacheData,
   CachedMolecule,
+  TokenizerType,
 } from './engine/types';
 import { ATOM_TYPES, BOND_TYPE_NAMES } from './engine/types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const BASE = import.meta.env.BASE_URL;
-const MODEL_PATH = `${BASE}models/hdtc_coconut`;
-const DEMO_CACHE_PATH = `${BASE}data/demo_cache.json`;
 
-// Default tokenizer config (HDTC COCONUT, labeled)
-// Will be overridden by tokenizer_config.json if model is loaded
-const DEFAULT_TOKENIZER_CONFIG = createTokenizerConfig(
-  /* vocabSize */ 127, // 12 + 100 + 10 + 5
-  /* labeledGraph */ true,
-  /* numAtomTypes */ 10,
-  /* numBondTypes */ 5,
-);
+/** Per-tokenizer model configuration. */
+const MODEL_CONFIGS: Record<TokenizerType, {
+  modelPath: string;
+  demoCachePath: string;
+  testTokensPath: string;
+  tokenizerConfigPath: string;
+  defaultConfig: TokenizerConfig;
+  label: string;
+  description: string;
+}> = {
+  hdtc: {
+    modelPath: `${BASE}models/hdtc_coconut`,
+    demoCachePath: `${BASE}data/demo_cache.json`,
+    testTokensPath: `${BASE}data/test_tokens.json`,
+    tokenizerConfigPath: `${BASE}models/hdtc_coconut/tokenizer_config.json`,
+    defaultConfig: createTokenizerConfig(127, true, 10, 5),
+    label: 'HDTC',
+    description: 'using HDTC (Hierarchical Direct Tree with Communities) — a tokenization that preserves the molecule\'s hierarchical structure: rings, functional groups, and their connections.',
+  },
+  sent: {
+    modelPath: `${BASE}models/sent_coconut`,
+    demoCachePath: `${BASE}data/sent_demo_cache.json`,
+    testTokensPath: `${BASE}data/sent_test_tokens.json`,
+    tokenizerConfigPath: `${BASE}models/sent_coconut/tokenizer_config.json`,
+    defaultConfig: createSentTokenizerConfig(121, true, 10, 5),
+    label: 'SENT',
+    description: 'using SENT (Sequential Edge-indicating Neighborhood Traversal) — a flat walk-based tokenization that encodes molecules as sequential node visits with back-edge brackets.',
+  },
+};
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
@@ -47,10 +69,12 @@ export default function App() {
   const [genStatus, setGenStatus] = useState<GenerationStatus>({ stage: 'idle' });
   const [molecules, setMolecules] = useState<MoleculeData[]>([]);
   const [rdkitReady, setRdkitReady] = useState(false);
-  const [tokenizerConfig, setTokenizerConfig] = useState<TokenizerConfig>(DEFAULT_TOKENIZER_CONFIG);
+  const [tokenizerType, setTokenizerType] = useState<TokenizerType>('hdtc');
+  const [tokenizerConfig, setTokenizerConfig] = useState<TokenizerConfig>(MODEL_CONFIGS.hdtc.defaultConfig);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d'); // Default to 2D for verification
 
   const modelRef = useRef<MosaicModel | null>(null);
+  const loadedModelType = useRef<TokenizerType | null>(null);
 
   // ─── Initialize RDKit on mount ───────────────────────────────────────────
 
@@ -68,42 +92,65 @@ export default function App() {
     };
   }, []);
 
-  const loadModel = useCallback(async () => {
-    if (modelRef.current?.isReady) return;
+  const loadModel = useCallback(async (type: TokenizerType) => {
+    // If we already have the right model loaded, skip
+    if (modelRef.current?.isReady && loadedModelType.current === type) return;
+
+    // Dispose previous model if switching types
+    if (modelRef.current && loadedModelType.current !== type) {
+      modelRef.current.dispose();
+      modelRef.current = null;
+      loadedModelType.current = null;
+    }
 
     const model = new MosaicModel();
     modelRef.current = model;
     model.setStatusCallback(setModelStatus);
 
-    await model.load(MODEL_PATH, { quantized: false });
+    await model.load(MODEL_CONFIGS[type].modelPath, { quantized: false });
+    loadedModelType.current = type;
   }, []);
 
-  // ─── Load tokenizer config ───────────────────────────────────────────────
+  // ─── Load tokenizer config (re-fetches when tokenizer type changes) ─────
 
   useEffect(() => {
-    fetch(`${BASE}models/hdtc_coconut/tokenizer_config.json`)
+    const cfg = MODEL_CONFIGS[tokenizerType];
+    fetch(cfg.tokenizerConfigPath)
       .then((r) => r.json())
       .then((config: Record<string, unknown>) => {
-        const newConfig = createTokenizerConfig(
+        const factory = tokenizerType === 'sent' ? createSentTokenizerConfig : createTokenizerConfig;
+        const newConfig = factory(
           config['vocab_size'] as number,
           config['labeled_graph'] as boolean,
           config['num_atom_types'] as number,
           config['num_bond_types'] as number,
         );
-        console.log('[MOSAIC] Tokenizer config loaded:', newConfig);
+        console.log(`[MOSAIC] ${tokenizerType.toUpperCase()} tokenizer config loaded:`, newConfig);
         setTokenizerConfig(newConfig);
       })
       .catch(() => {
-        // Use default config
+        // Use default config for this type
+        setTokenizerConfig(cfg.defaultConfig);
       });
-  }, []);
+  }, [tokenizerType]);
+
+  // ─── Tokenizer Type Switcher ─────────────────────────────────────────────
+
+  const handleTypeChange = useCallback((type: TokenizerType) => {
+    if (type === tokenizerType) return;
+    // Reset state when switching
+    setMolecules([]);
+    setGenStatus({ stage: 'idle' });
+    setModelStatus({ stage: 'idle' });
+    setTokenizerType(type);
+  }, [tokenizerType]);
 
   // ─── Generation Handler ──────────────────────────────────────────────────
 
   const handleGenerate = useCallback(
     async (config: GenerationConfig) => {
       try {
-        await loadModel();
+        await loadModel(tokenizerType);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setGenStatus({ stage: 'error', error: `Model load failed: ${msg}. Use the Demo button instead.` });
@@ -116,12 +163,19 @@ export default function App() {
       const startTime = performance.now();
       let totalTokens = 0;
 
+      const tokenIds: GenerationTokenIds = {
+        sos: tokenizerConfig.sosTokenId,
+        eos: tokenizerConfig.eosTokenId,
+        pad: tokenizerConfig.padTokenId,
+      };
+
       setGenStatus({ stage: 'generating', current: 0, total: config.numMolecules, tokensGenerated: 0 });
       setMolecules([]);
 
       try {
         const results = await model.generateBatch(
           config,
+          tokenIds,
           (index, _result) => {
             setGenStatus({
               stage: 'generating',
@@ -141,50 +195,18 @@ export default function App() {
         const decoded: MoleculeData[] = results.map((result, i) => {
           // ── Token-level diagnostic ──────────────────────────────────
           const toks = result.tokens;
-          const tokenCounts: Record<string, number> = {
-            SOS: 0, EOS: 0, PAD: 0,
-            COMM_START: 0, COMM_END: 0,
-            LEDGE: 0, REDGE: 0,
-            SUPER_START: 0, SUPER_END: 0,
-            TYPE_RING: 0, TYPE_FUNC: 0, TYPE_SINGLETON: 0,
-            NODE_ID: 0, ATOM_TYPE: 0, BOND_TYPE: 0,
-          };
-          for (const t of toks) {
-            if (t === HDTC.SOS) tokenCounts['SOS']!++;
-            else if (t === HDTC.EOS) tokenCounts['EOS']!++;
-            else if (t === HDTC.PAD) tokenCounts['PAD']!++;
-            else if (t === HDTC.COMM_START) tokenCounts['COMM_START']!++;
-            else if (t === HDTC.COMM_END) tokenCounts['COMM_END']!++;
-            else if (t === HDTC.LEDGE) tokenCounts['LEDGE']!++;
-            else if (t === HDTC.REDGE) tokenCounts['REDGE']!++;
-            else if (t === HDTC.SUPER_START) tokenCounts['SUPER_START']!++;
-            else if (t === HDTC.SUPER_END) tokenCounts['SUPER_END']!++;
-            else if (t === HDTC.TYPE_RING) tokenCounts['TYPE_RING']!++;
-            else if (t === HDTC.TYPE_FUNC) tokenCounts['TYPE_FUNC']!++;
-            else if (t === HDTC.TYPE_SINGLETON) tokenCounts['TYPE_SINGLETON']!++;
-            else if (t >= tokenizerConfig.edgeIdxOffset) tokenCounts['BOND_TYPE']!++;
-            else if (t >= tokenizerConfig.nodeIdxOffset) tokenCounts['ATOM_TYPE']!++;
-            else if (t >= HDTC.IDX_OFFSET) tokenCounts['NODE_ID']!++;
-          }
-
-          const readable = toks.slice(0, 60).map((t) => tokenToString(t, tokenizerConfig)).join(' ');
-          console.log(`[MOSAIC] ── Molecule ${i} Token Diagnostic ──`);
+          const toStr = tokenizerType === 'sent' ? sentTokenToString : tokenToString;
+          const readable = toks.slice(0, 60).map((t) => toStr(t, tokenizerConfig)).join(' ');
+          console.log(`[MOSAIC] ── Molecule ${i} (${tokenizerType.toUpperCase()}) ──`);
           console.log(`[MOSAIC]   Total tokens: ${toks.length}`);
-          console.log(`[MOSAIC]   Token counts:`, tokenCounts);
-          console.log(`[MOSAIC]   LEDGE count: ${tokenCounts['LEDGE']} (${tokenCounts['LEDGE']! === 0 ? 'NO BACK-EDGES → NO BONDS!' : 'OK'})`);
           console.log(`[MOSAIC]   First 60 tokens: ${readable}`);
 
-          // ── Decode ──────────────────────────────────────────────────
-          let mol = decodeTokens(toks, tokenizerConfig, i);
+          // ── Decode (dispatch by tokenizer type) ─────────────────────
+          let mol = tokenizerType === 'sent'
+            ? decodeSentTokens(toks, tokenizerConfig, i)
+            : decodeTokens(toks, tokenizerConfig, i);
 
-          console.log(`[MOSAIC]   Decoded: ${mol.atoms.length} atoms, ${mol.bonds.length} bonds, ${mol.communities.length} communities, ${mol.superEdges.length} super-edges`);
-          if (mol.bonds.length === 0 && tokenCounts['LEDGE']! > 0) {
-            console.error(`[MOSAIC]   BUG: LEDGE tokens exist but 0 bonds decoded!`);
-            // Log community internal edges for debugging
-            for (const comm of mol.communities) {
-              console.log(`[MOSAIC]     Community ${comm.id} (${comm.type}): ${comm.atomIndices.length} atoms, ${comm.internalEdges.length} internal edges`);
-            }
-          }
+          console.log(`[MOSAIC]   Decoded: ${mol.atoms.length} atoms, ${mol.bonds.length} bonds, ${mol.communities.length} communities`);
 
           // Validate and get coordinates via RDKit
           if (rdkitReady) {
@@ -209,7 +231,7 @@ export default function App() {
         setGenStatus({ stage: 'error', error: msg });
       }
     },
-    [tokenizerConfig, rdkitReady, loadModel],
+    [tokenizerType, tokenizerConfig, rdkitReady, loadModel],
   );
 
   // ─── Fallback: Load pre-generated cache ──────────────────────────────────
@@ -217,8 +239,10 @@ export default function App() {
   const handleLoadFallback = useCallback(async () => {
     setGenStatus({ stage: 'generating', current: 0, total: 1, tokensGenerated: 0 });
 
+    const cachePath = MODEL_CONFIGS[tokenizerType].demoCachePath;
+
     try {
-      const response = await fetch(DEMO_CACHE_PATH);
+      const response = await fetch(cachePath);
       if (!response.ok) throw new Error(`Failed to load demo cache: ${response.status}`);
 
       const cache: DemoCacheData = await response.json();
@@ -240,7 +264,7 @@ export default function App() {
         return mol;
       });
 
-      console.log(`[MOSAIC] Demo cache: ${validCached.length} valid, ${invalidCached.length} invalid, showing ${molecules.length}`);
+      console.log(`[MOSAIC] Demo cache (${tokenizerType}): ${validCached.length} valid, ${invalidCached.length} invalid, showing ${molecules.length}`);
       setMolecules(molecules);
       setGenStatus({ stage: 'complete', elapsed: 0 });
     } catch (err) {
@@ -248,7 +272,7 @@ export default function App() {
       setMolecules(generatePlaceholderMolecules());
       setGenStatus({ stage: 'complete', elapsed: 0 });
     }
-  }, []);
+  }, [tokenizerType]);
 
   // ─── Test Decode: Load pre-generated tokens and decode them ──────────────
 
@@ -257,17 +281,21 @@ export default function App() {
     setMolecules([]);
     setViewMode('2d');
 
+    const testPath = MODEL_CONFIGS[tokenizerType].testTokensPath;
+
     try {
-      const response = await fetch(`${BASE}data/test_tokens.json`);
+      const response = await fetch(testPath);
       if (!response.ok) throw new Error(`Failed to load test tokens: ${response.status}`);
 
       const tokenEntries: { id: number; tokens: number[]; smiles: string | null }[] = await response.json();
 
       const decoded: MoleculeData[] = tokenEntries.map((entry, i) => {
-        console.log(`[MOSAIC] Test decode molecule ${i}: ${entry.tokens.length} tokens, Python SMILES: ${entry.smiles}`);
+        console.log(`[MOSAIC] Test decode (${tokenizerType}) molecule ${i}: ${entry.tokens.length} tokens, Python SMILES: ${entry.smiles}`);
 
-        let mol = decodeTokens(entry.tokens, tokenizerConfig, i);
-        console.log(`[MOSAIC]   Decoded: ${mol.atoms.length} atoms, ${mol.bonds.length} bonds, ${mol.communities.length} communities`);
+        let mol = tokenizerType === 'sent'
+          ? decodeSentTokens(entry.tokens, tokenizerConfig, i)
+          : decodeTokens(entry.tokens, tokenizerConfig, i);
+        console.log(`[MOSAIC]   Decoded: ${mol.atoms.length} atoms, ${mol.bonds.length} bonds`);
 
         if (rdkitReady) {
           mol = validateAndEnrich(mol);
@@ -291,7 +319,7 @@ export default function App() {
       const msg = err instanceof Error ? err.message : String(err);
       setGenStatus({ stage: 'error', error: msg });
     }
-  }, [tokenizerConfig, rdkitReady]);
+  }, [tokenizerType, tokenizerConfig, rdkitReady]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -338,9 +366,7 @@ export default function App() {
         <p>
           This demo runs a <strong className="text-[var(--text-primary)]">GPT-2 model</strong> (11.5M params)
           directly in your browser via <strong className="text-[var(--text-primary)]">ONNX Runtime Web</strong> (WebGPU/WASM).
-          The model generates molecules as token sequences using <strong className="text-[var(--text-primary)]">HDTC</strong> (Hierarchical
-          Direct Tree with Communities) — a tokenization that preserves the molecule's hierarchical
-          structure: rings, functional groups, and their connections.
+          The model generates molecules as token sequences {MODEL_CONFIGS[tokenizerType].description}{' '}
           Generated structures are validated with <strong className="text-[var(--text-primary)]">RDKit</strong> to produce SMILES strings.
           No data leaves your device.
         </p>
@@ -353,6 +379,8 @@ export default function App() {
         onGenerate={handleGenerate}
         onLoadFallback={handleLoadFallback}
         onTestDecode={handleTestDecode}
+        tokenizerType={tokenizerType}
+        onTypeChange={handleTypeChange}
       />
 
       {/* Progress */}

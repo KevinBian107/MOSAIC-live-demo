@@ -25,6 +25,7 @@ import type {
   CommunityType,
   MoleculeData,
   SuperEdge,
+  TokenizerType,
 } from './types';
 import { ATOM_TYPES, BOND_TYPE_NAMES } from './types';
 
@@ -55,19 +56,26 @@ const TOKEN_TO_COMMUNITY_TYPE: Record<number, CommunityType> = {
 // ─── Tokenizer Config ────────────────────────────────────────────────────────
 
 export interface TokenizerConfig {
+  tokenizerType: TokenizerType;
   vocabSize: number;
   labeledGraph: boolean;
   maxNumNodes: number;
   numAtomTypes: number;  // 10
   numBondTypes: number;  // 5
+  /** First token index for node IDs */
+  idxOffset: number;
   /** IDX_OFFSET + maxNumNodes (start of atom type tokens) */
   nodeIdxOffset: number;
   /** nodeIdxOffset + numAtomTypes (start of bond type tokens) */
   edgeIdxOffset: number;
+  /** Token IDs for generation loop */
+  sosTokenId: number;
+  eosTokenId: number;
+  padTokenId: number;
 }
 
 /**
- * Create tokenizer config from exported tokenizer_config.json values.
+ * Create HDTC tokenizer config from exported tokenizer_config.json values.
  */
 export function createTokenizerConfig(
   vocabSize: number,
@@ -80,13 +88,18 @@ export function createTokenizerConfig(
     : vocabSize - HDTC.IDX_OFFSET;
 
   return {
+    tokenizerType: 'hdtc',
     vocabSize,
     labeledGraph,
     maxNumNodes,
     numAtomTypes,
     numBondTypes,
+    idxOffset: HDTC.IDX_OFFSET,
     nodeIdxOffset: HDTC.IDX_OFFSET + maxNumNodes,
     edgeIdxOffset: HDTC.IDX_OFFSET + maxNumNodes + numAtomTypes,
+    sosTokenId: HDTC.SOS,
+    eosTokenId: HDTC.EOS,
+    padTokenId: HDTC.PAD,
   };
 }
 

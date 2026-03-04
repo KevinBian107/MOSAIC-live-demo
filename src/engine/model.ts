@@ -6,8 +6,14 @@
  */
 
 import type { GenerationConfig, ModelStatus } from './types';
-import { HDTC } from './tokenizer';
 import { SeededRNG, sampleTopK } from './sampling';
+
+/** Token IDs needed by the generation loop. */
+export interface GenerationTokenIds {
+  sos: number;
+  eos: number;
+  pad: number;
+}
 
 // Transformers.js types (dynamic import)
 type TransformersModule = typeof import('@huggingface/transformers');
@@ -68,6 +74,7 @@ export class MosaicModel {
 
     // Configure Transformers.js
     env.allowLocalModels = true;
+    env.allowRemoteModels = false; // Only load from local server, never from HF Hub
     env.useBrowserCache = false; // Disable cache to ensure fresh model loads during development
 
     this.updateStatus({ stage: 'loading', progress: 0.2, message: 'Loading ONNX model...' });
@@ -132,6 +139,7 @@ export class MosaicModel {
    */
   async generateOne(
     config: GenerationConfig,
+    tokenIds: GenerationTokenIds,
     onToken?: (token: number, position: number) => void,
   ): Promise<GenerationResult> {
     if (!this.model) {
@@ -141,7 +149,7 @@ export class MosaicModel {
     const { Tensor } = await getTransformers();
     const rng = new SeededRNG(config.seed);
 
-    const tokens: number[] = [HDTC.SOS];
+    const tokens: number[] = [tokenIds.sos];
     const maxLen = config.maxLength || 2048;
 
     console.log(`[MOSAIC] Generating (seed=${config.seed}, temp=${config.temperature}, topK=${config.topK})`);
@@ -175,7 +183,7 @@ export class MosaicModel {
       const lastLogits = logitsData.slice(lastPosOffset, lastPosOffset + vocabSize);
 
       // Mask PAD token (should never be generated)
-      lastLogits[HDTC.PAD] = -Infinity;
+      lastLogits[tokenIds.pad] = -Infinity;
 
       // Sample next token
       const nextToken = sampleTopK(lastLogits, config.topK, config.temperature, rng);
@@ -184,7 +192,7 @@ export class MosaicModel {
       onToken?.(nextToken, pos);
 
       // Stop at EOS
-      if (nextToken === HDTC.EOS) break;
+      if (nextToken === tokenIds.eos) break;
     }
 
     console.log(`[MOSAIC] Generated ${tokens.length} tokens`);
@@ -205,6 +213,7 @@ export class MosaicModel {
    */
   async generateBatch(
     config: GenerationConfig,
+    tokenIds: GenerationTokenIds,
     onMoleculeComplete?: (index: number, result: GenerationResult) => void,
     onToken?: (moleculeIndex: number, token: number, position: number) => void,
   ): Promise<GenerationResult[]> {
@@ -215,6 +224,7 @@ export class MosaicModel {
       const molConfig = { ...config, seed: config.seed + i };
       const result = await this.generateOne(
         molConfig,
+        tokenIds,
         onToken ? (token, pos) => onToken(i, token, pos) : undefined,
       );
       results.push(result);

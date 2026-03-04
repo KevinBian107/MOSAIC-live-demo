@@ -1,0 +1,37 @@
+{
+  "tokenizer_type": "sent",
+  "special_tokens": {
+    "SOS": 0,
+    "RESET": 1,
+    "LADJ": 2,
+    "RADJ": 3,
+    "EOS": 4,
+    "PAD": 5
+  },
+  "IDX_OFFSET": 6,
+  "vocab_size": 121,
+  "labeled_graph": true,
+  "num_atom_types": 10,
+  "num_bond_types": 5,
+  "atom_types": [
+    "C",
+    "N",
+    "O",
+    "F",
+    "P",
+    "S",
+    "Cl",
+    "Br",
+    "I",
+    "Unknown"
+  ],
+  "bond_types": [
+    "SINGLE",
+    "DOUBLE",
+    "TRIPLE",
+    "AROMATIC",
+    "Unknown"
+  ],
+  "max_num_nodes": 100,
+  "n_positions": 2048
+}
