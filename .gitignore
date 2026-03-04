@@ -2,10 +2,10 @@ node_modules/
 dist/
 .vite/
 *.local
+*.tsbuildinfo
 
-# Model files (too large for git — see docs/onnx-export.md)
-public/models/**/*.onnx
-public/models/**/*.bin
+# Quantized model (fp32 is used — see docs/onnx-export.md)
+public/models/**/*quantized*
 
-# Pre-generated demo cache
+# Pre-generated demo cache (regenerate with generate_demo_cache.py)
 public/data/demo_cache.json

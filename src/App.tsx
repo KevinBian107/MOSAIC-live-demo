@@ -27,8 +27,9 @@ import { ATOM_TYPES, BOND_TYPE_NAMES } from './engine/types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const MODEL_PATH = '/models/hdtc_coconut';
-const DEMO_CACHE_PATH = '/data/demo_cache.json';
+const BASE = import.meta.env.BASE_URL;
+const MODEL_PATH = `${BASE}models/hdtc_coconut`;
+const DEMO_CACHE_PATH = `${BASE}data/demo_cache.json`;
 
 // Default tokenizer config (HDTC COCONUT, labeled)
 // Will be overridden by tokenizer_config.json if model is loaded
@@ -80,7 +81,7 @@ export default function App() {
   // ─── Load tokenizer config ───────────────────────────────────────────────
 
   useEffect(() => {
-    fetch('/models/hdtc_coconut/tokenizer_config.json')
+    fetch(`${BASE}models/hdtc_coconut/tokenizer_config.json`)
       .then((r) => r.json())
       .then((config: Record<string, unknown>) => {
         const newConfig = createTokenizerConfig(
@@ -257,7 +258,7 @@ export default function App() {
     setViewMode('2d');
 
     try {
-      const response = await fetch('/data/test_tokens.json');
+      const response = await fetch(`${BASE}data/test_tokens.json`);
       if (!response.ok) throw new Error(`Failed to load test tokens: ${response.status}`);
 
       const tokenEntries: { id: number; tokens: number[]; smiles: string | null }[] = await response.json();
